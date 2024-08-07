@@ -4,6 +4,6 @@ services:
   vm-simulator:
     build: .
     volumes:
-      - ./VirtualMemoryProject:/usr/src/app
+      - .:/usr/src/app
     stdin_open: true
     tty: true
