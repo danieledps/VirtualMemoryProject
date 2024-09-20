@@ -1,81 +1,47 @@
-#include <stdio.h>
 #include "fake_mmu.h"
+#include <stdio.h>
+#include <assert.h>
 
-int main(int  argc, char** argv){
-  printf("ADDRESS_NBITS: %d, size: %d\n", ADDRESS_NBITS, MAX_MEMORY);
-  printf("SEGMENT_NBITS: %d, num_segments: %d\n", SEGMENT_NBITS, SEGMENTS_NUM);
-  printf("PAGE_NBITS: %d, num_pages: %d, frame_size:%d\n",
-	 PAGE_NBITS,
-	 PAGES_NUM,
-	 PAGE_SIZE);
+#define NUM_TEST_PAGES 4
 
-  PageEntry pages[PAGES_NUM];
-  uint32_t pages_num=PAGES_NUM;
+int main() {
+    MMU* mmu = MMU_init("swapfile");
 
-  // we fill the pages array in reverse order, just for fun
-  for (int i=0; i<PAGES_NUM; ++i){
-    PageEntry* entry=pages+i;
-    entry->frame_number=PAGES_NUM-i-1;
-    entry->flags=Valid;
-  }
+    for (int i = 0; i < NUM_TEST_PAGES; i++) {
+        mmu->segments[i].base = 0;
+        mmu->segments[i].limit = NUM_TEST_PAGES;
+        mmu->segments[i].flags = Valid | Read | Write;
 
-
-  // we divide the memory in 4 contiguous
-  SegmentDescriptor segments[4];
-  uint32_t segments_num=4;
-  segments[0].flags=Valid;
-  segments[0].base=0;
-  segments[0].limit=PAGES_NUM/4;
-
-  segments[1].flags=Valid;
-  segments[1].base=segments[0].limit;
-  segments[1].limit=PAGES_NUM/4;
-
-  segments[2].flags=Valid;
-  segments[2].base=segments[1].base+segments[1].limit;
-  segments[2].limit=PAGES_NUM/4;
-
-  segments[3].flags=Valid;
-  segments[3].base=segments[2].base+segments[2].limit;
-  segments[3].limit=PAGES_NUM/4;
-
-  MMU mmu;
-  mmu.segments=segments;
-  mmu.num_segments=segments_num;
-  mmu.pages=pages;
-  mmu.num_pages=pages_num;
-
-
-  // we generate a set of linear addresses and see how they are mapped
-  for (uint32_t s=0; s<segments_num; ++s){
-    printf("in segment %x, base: %x, limit: %x\n",
-	   s,
-	   segments[s].base,
-	   segments[s].limit);
-	   
-           
-    for (uint32_t p=0; p<segments[s].limit; ++p){
-      LogicalAddress logical_address;
-      logical_address.segment_id=s;
-      logical_address.page_number=p;
-      logical_address.offset=0x1;
-      printf("logical address: [s: %x, p: %x, o: %x] -> ",
-	     logical_address.segment_id,
-	     logical_address.page_number,
-	     logical_address.offset);
-
-      LinearAddress linear_address=getLinearAddress(&mmu, logical_address);
-      printf("linear address: [p: %x, o: %x] -> ",
-	     linear_address.page_number,
-	     linear_address.offset);
-
-      PhysicalAddress physical_address=getPhysicalAddress(&mmu, linear_address);
-      printf("physical_address: [%x] \n",
-	     physical_address);
-
+        mmu->pages[i].frame_number = i; 
+        mmu->pages[i].flags = PageValid;
     }
-  }
-    
-  return 0;
 
+    LogicalAddress logical_address;
+    char data[NUM_TEST_PAGES] = {'A', 'B', 'C', 'D'};
+
+    for (int i = 0; i < NUM_TEST_PAGES; i++) {
+        logical_address.segment_id = 0;
+        logical_address.page_number = i;
+        logical_address.offset = 0;
+
+        MMU_writeByte(mmu, logical_address, data[i]);
+        char read_value = MMU_readByte(mmu, logical_address);
+        assert(read_value == data[i] && "Errore nella lettura!");
+    }
+
+    // Test eccezione
+    logical_address.page_number = 2; 
+    mmu->pages[logical_address.page_number].flags = 0; // Imposta la pagina come non valida
+
+    printf("Tentativo di scrittura in pagina non valida %d...\n", logical_address.page_number);
+    MMU_exception(mmu, logical_address.page_number); 
+    printf("Page fault gestito per la pagina %d.\n", logical_address.page_number);
+
+    mmu->pages[logical_address.page_number].flags = PageValid; // Imposta la pagina a valida
+    MMU_writeByte(mmu, logical_address, 'X');
+    char read_value_after_fault = MMU_readByte(mmu, logical_address);
+    assert(read_value_after_fault == 'X' && "Errore nella lettura dopo il page fault!");
+
+    MMU_free(mmu);
+    return 0;
 }

@@ -1,72 +1,74 @@
+// mmu.h
 #pragma once
 #include <stdint.h>
+#include <stdio.h>
 
-#ifdef _FAKE_MMU_TEST_
-#include "constants_small.h"
-#else
-#include "constants_real.h"
-#endif
-
-// number of bytes in address space
-#define MAX_MEMORY (1<<ADDRESS_NBITS)
-
+#define PHYSICAL_MEMORY_SIZE (1 << 20) // 1 MB
+#define VIRTUAL_MEMORY_SIZE (1 << 24)  // 16 MB
+#define PAGE_SIZE (1 << 12)            // 4 KB
+#define NUM_PAGES (VIRTUAL_MEMORY_SIZE / PAGE_SIZE)
+#define NUM_FRAMES (PHYSICAL_MEMORY_SIZE / PAGE_SIZE)
+#define PAGE_NBITS 12
+#define FRAME_NBITS 12
 #define SEGMENT_FLAGS_NBITS 3
 #define PAGE_FLAGS_NBITS 5
 
-// total number of segments
-#define SEGMENTS_NUM (1<<SEGMENT_NBITS)
-
-#define LOGICAL_ADDRESS_NBITS (ADDRESS_NBITS+SEGMENT_NBITS)
-
-// number of pages
-#define PAGES_NUM  (1<<PAGE_NBITS)
-
-#define FRAME_NBITS (ADDRESS_NBITS-PAGE_NBITS)
-		    
-
-// size of a memory page
-#define PAGE_SIZE (1<<FRAME_NBITS)
+#define MAX_PAGES NUM_PAGES
+#define MAX_SEGMENTS NUM_PAGES
 
 typedef enum {
-  Valid=0x1,
-  Read=0x2,
-  Write=0x4
+    Valid = 0x1,
+    Read = 0x2,
+    Write = 0x4
 } SegmentFlags;
 
-typedef struct SegmentDescriptor{
-  uint32_t base: PAGE_NBITS;  
-  uint32_t limit: PAGE_NBITS;
-  SegmentFlags flags: SEGMENT_FLAGS_NBITS;
+typedef enum {
+    PageValid = 0x1,
+    ReadBit = 0x2,
+    WriteBit = 0x4,
+    Unswappable = 0x8
+} PageFlags;
+
+typedef struct SegmentDescriptor {
+    uint32_t base: PAGE_NBITS;
+    uint32_t limit: PAGE_NBITS;
+    SegmentFlags flags: SEGMENT_FLAGS_NBITS;
 } SegmentDescriptor;
 
-typedef struct LogicalAddress{
-  uint32_t segment_id: SEGMENT_NBITS;
-  uint32_t page_number: PAGE_NBITS;
-  uint32_t offset: FRAME_NBITS;
-} LogicalAddress;
-
-
-typedef struct LinearAddress{
-  uint32_t page_number: PAGE_NBITS;
-  uint32_t offset:      FRAME_NBITS;
-} LinearAddress;
-
 typedef struct PageEntry {
-  uint32_t frame_number: PAGE_NBITS;
-  uint32_t flags: PAGE_FLAGS_NBITS;
+    uint32_t frame_number: PAGE_NBITS;
+    uint32_t flags: PAGE_FLAGS_NBITS;
 } PageEntry;
 
 typedef struct MMU {
-  SegmentDescriptor* segments;
-  uint32_t num_segments; // number of good segments
-  PageEntry *pages;
-  uint32_t num_pages;
+    PageEntry* pages;
+    SegmentDescriptor* segments;
+    char physical_memory[PHYSICAL_MEMORY_SIZE];
+    FILE* swap_file;
+    int page_fault_count;
+    int* frame_usage;
+    int num_pages;
+    int num_segments;
 } MMU;
 
-// applies segmentation to an address and returns linear address
-LinearAddress getLinearAddress(MMU* mmu, LogicalAddress logical_address);
+typedef struct LogicalAddress {
+    uint32_t segment_id;
+    uint32_t page_number;
+    uint32_t offset;
+} LogicalAddress;
+
+typedef struct LinearAddress {
+    uint32_t page_number;
+    uint32_t offset;
+} LinearAddress;
 
 typedef uint32_t PhysicalAddress;
 
-// applies pagination to an address and returns the physical address
+MMU* MMU_init(const char* swap_filename);
+void MMU_free(MMU* mmu);
+void MMU_exception(MMU* mmu, uint32_t page_number);
+LinearAddress getLinearAddress(MMU* mmu, LogicalAddress logical_address);
 uint32_t getPhysicalAddress(MMU* mmu, LinearAddress linear_address);
+void MMU_writeByte(MMU* mmu, LogicalAddress logical_address, char c);
+char MMU_readByte(MMU* mmu, LogicalAddress logical_address);
+int find_free_frame_or_replace(MMU* mmu);
