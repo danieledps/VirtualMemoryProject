@@ -5,15 +5,14 @@ AR=ar
 
 BINS=fake_mmu_test
 
-OBJS=linked_list.o fake_mmu.o
+OBJS=fake_mmu.o
 
-HEADERS=linked_list.h fake_mmu.h
+HEADERS=fake_mmu.h
 
 %.o:	%.c $(HEADERS)
 	$(CC) $(CCOPTS) -c -o $@  $<
 
 .phony: clean all
-
 
 all:	$(BINS) 
 

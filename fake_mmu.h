@@ -1,4 +1,3 @@
-// mmu.h
 #pragma once
 #include <stdint.h>
 #include <stdio.h>
@@ -8,13 +7,12 @@
 #define PAGE_SIZE (1 << 12)            // 4 KB
 #define NUM_PAGES (VIRTUAL_MEMORY_SIZE / PAGE_SIZE)
 #define NUM_FRAMES (PHYSICAL_MEMORY_SIZE / PAGE_SIZE)
+#define NUM_SEGMENTS 16
 #define PAGE_NBITS 12
 #define FRAME_NBITS 12
 #define SEGMENT_FLAGS_NBITS 3
-#define PAGE_FLAGS_NBITS 5
 
-#define MAX_PAGES NUM_PAGES
-#define MAX_SEGMENTS NUM_PAGES
+#define PAGE_FLAGS_NBITS 5
 
 typedef enum {
     Valid = 0x1,
@@ -31,7 +29,7 @@ typedef enum {
 
 typedef struct SegmentDescriptor {
     uint32_t base: PAGE_NBITS;
-    uint32_t limit: PAGE_NBITS;
+    uint32_t limit: 24;
     SegmentFlags flags: SEGMENT_FLAGS_NBITS;
 } SegmentDescriptor;
 

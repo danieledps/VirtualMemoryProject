@@ -1,46 +1,75 @@
 #include "fake_mmu.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <assert.h>
 
-void test_mmu_with_swap_handling() {
-
-    MMU* mmu = MMU_init("swapfile_test.bin");
-
-    LogicalAddress addr1 = {0, 0, 0}; 
-    LogicalAddress addr2 = {0, 1, 0};  
-    LogicalAddress addr3 = {0, 2, 0};  
-    LogicalAddress addr4 = {0, 3, 0}; 
-    LogicalAddress addr5 = {0, 4, 0}; 
-
-    mmu->segments[0].base = 0;
-    mmu->segments[0].limit = 5;
-    mmu->segments[0].flags = Valid | Read | Write;
-
-    printf("\n=== TEST WRITE WITH PAGE FAULT ===\n");
-    MMU_writeByte(mmu, addr1, 'A'); 
-    MMU_writeByte(mmu, addr2, 'B'); 
-    MMU_writeByte(mmu, addr3, 'C'); 
-    MMU_writeByte(mmu, addr4, 'D'); 
-    printf("\n=== CAUSING PAGE FAULT (OUT OF MEMORY) ===\n");
-    MMU_writeByte(mmu, addr5, 'E'); 
-
-    printf("\n=== TEST READ AFTER SWAP ===\n");
-    char c1 = MMU_readByte(mmu, addr1);
-    char c2 = MMU_readByte(mmu, addr2);
-    char c3 = MMU_readByte(mmu, addr3);
-    char c4 = MMU_readByte(mmu, addr4);
-    char c5 = MMU_readByte(mmu, addr5); 
-
-    printf("Expected 'A', got: '%c'\n", c1);
-    printf("Expected 'B', got: '%c'\n", c2);
-    printf("Expected 'C', got: '%c'\n", c3);
-    printf("Expected 'D', got: '%c'\n", c4);
-    printf("Expected 'E', got: '%c'\n", c5);
-
+void test_MMU_initialization() {
+    printf("Running test: MMU_initialization...\n");
+    MMU* mmu = MMU_init("swap_file.bin");
+    for (int i = 0; i < mmu->num_segments; i++) {
+        assert(mmu->segments[i].flags & Valid && "Segment should be initialized as valid");
+    }
+    for (int i = 0; i < mmu->num_pages; i++) {
+        assert(!(mmu->pages[i].flags & PageValid) && "Page should be initially invalid");
+    }
     MMU_free(mmu);
+    printf("Test MMU_initialization passed.\n");
+}
+
+void test_page_fault_handling() {
+    printf("Running test: Page Fault Handling...\n");
+    MMU* mmu = MMU_init("swap_file.bin");
+    LogicalAddress la = {0, 0, 0};
+    char data = MMU_readByte(mmu, la);
+    printf("Read data after page fault: %c\n", data);
+    assert(mmu->pages[0].flags & PageValid && "Page should be valid after page fault");
+    MMU_free(mmu);
+    printf("Test Page Fault Handling passed.\n");
+}
+
+void test_write_and_read() {
+    printf("Running test: Write and Read...\n");
+    MMU* mmu = MMU_init("swap_file.bin");
+    LogicalAddress la = {0, 1, 100};
+    MMU_writeByte(mmu, la, 'A');
+    assert(mmu->pages[1].flags & WriteBit && "Page should have WriteBit set after write");
+    assert(mmu->pages[1].flags & ReadBit && "Page should have ReadBit set after write");
+    char c = MMU_readByte(mmu, la);
+    assert(c == 'A' && "The byte read should match the written byte");
+    MMU_free(mmu);
+    printf("Test Write and Read passed.\n");
+}
+
+void test_second_chance_algorithm() {
+    printf("Running test: Second Chance Algorithm...\n");
+    MMU* mmu = MMU_init("swap_file.bin");
+    for (int i = 0; i < NUM_FRAMES; i++) {
+        LogicalAddress la = {0, i, 0};
+        MMU_writeByte(mmu, la, 'B' + i);
+    }
+    LogicalAddress la = {1, 0, 0};
+    MMU_writeByte(mmu, la, 'B' + 256);
+    assert(!(mmu->pages[0].flags & PageValid) && "Page 0 should have been replaced.");
+    MMU_free(mmu);
+    printf("Test Second Chance Algorithm passed.\n");
+}
+
+void test_access_out_of_segment() {
+    printf("Running test: Access Out Of Segment...\n");
+    MMU* mmu = MMU_init("swap_file.bin");
+    LogicalAddress la = {0, 257, 0};
+    printf("Segment ID: %d, Page Number: %d, Segment Limit: %d\n", la.segment_id, la.page_number, mmu->segments[la.segment_id].limit);
+    assert(!(la.page_number < mmu->segments[la.segment_id].limit) && "Access should fail due to out of bounds");
+    MMU_free(mmu);
+    printf("Test Access Out Of Segment passed.\n");
 }
 
 int main() {
-    test_mmu_with_swap_handling();
+    test_MMU_initialization();
+    test_page_fault_handling();
+    test_write_and_read();
+    test_second_chance_algorithm();
+    test_access_out_of_segment();
+    printf("All tests passed!\n");
     return 0;
 }
