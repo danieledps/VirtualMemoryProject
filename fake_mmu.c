@@ -92,6 +92,10 @@ int find_free_frame_or_replace(MMU* mmu) {
 
 void MMU_writeByte(MMU* mmu, LogicalAddress logical_address, char c) {
     LinearAddress linear_address = getLinearAddress(mmu, logical_address);
+    if (!(mmu->pages[linear_address.page_number].flags & PageValid)) {
+        printf("Page fault during write at page %u. Invoking MMU_exception.\n", logical_address.page_number);
+        MMU_exception(mmu, linear_address.page_number);  // Gestisce la page fault
+    }
     PhysicalAddress physical_address = getPhysicalAddress(mmu, linear_address);
     mmu->physical_memory[physical_address] = c;
     mmu->pages[logical_address.page_number].flags |= WriteBit | ReadBit;
@@ -100,6 +104,10 @@ void MMU_writeByte(MMU* mmu, LogicalAddress logical_address, char c) {
 
 char MMU_readByte(MMU* mmu, LogicalAddress logical_address) {
     LinearAddress linear_address = getLinearAddress(mmu, logical_address);
+    if (!(mmu->pages[linear_address.page_number].flags & PageValid)) {
+        printf("Page fault during read at page %u. Invoking MMU_exception.\n", logical_address.page_number);
+        MMU_exception(mmu, linear_address.page_number); 
+    }
     PhysicalAddress physical_address = getPhysicalAddress(mmu, linear_address);
     mmu->pages[logical_address.page_number].flags |= ReadBit;
     printf("Read byte '%c' from page %u, offset %u (physical address: %u)\n", mmu->physical_memory[physical_address], logical_address.page_number, logical_address.offset, physical_address);

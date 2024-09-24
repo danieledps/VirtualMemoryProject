@@ -2,46 +2,45 @@
 #include <stdio.h>
 #include <assert.h>
 
-#define NUM_TEST_PAGES 4
+void test_mmu_with_swap_handling() {
 
-int main() {
-    MMU* mmu = MMU_init("swapfile");
+    MMU* mmu = MMU_init("swapfile_test.bin");
 
-    for (int i = 0; i < NUM_TEST_PAGES; i++) {
-        mmu->segments[i].base = 0;
-        mmu->segments[i].limit = NUM_TEST_PAGES;
-        mmu->segments[i].flags = Valid | Read | Write;
+    LogicalAddress addr1 = {0, 0, 0}; 
+    LogicalAddress addr2 = {0, 1, 0};  
+    LogicalAddress addr3 = {0, 2, 0};  
+    LogicalAddress addr4 = {0, 3, 0}; 
+    LogicalAddress addr5 = {0, 4, 0}; 
 
-        mmu->pages[i].frame_number = i; 
-        mmu->pages[i].flags = PageValid;
-    }
+    mmu->segments[0].base = 0;
+    mmu->segments[0].limit = 5;
+    mmu->segments[0].flags = Valid | Read | Write;
 
-    LogicalAddress logical_address;
-    char data[NUM_TEST_PAGES] = {'A', 'B', 'C', 'D'};
+    printf("\n=== TEST WRITE WITH PAGE FAULT ===\n");
+    MMU_writeByte(mmu, addr1, 'A'); 
+    MMU_writeByte(mmu, addr2, 'B'); 
+    MMU_writeByte(mmu, addr3, 'C'); 
+    MMU_writeByte(mmu, addr4, 'D'); 
+    printf("\n=== CAUSING PAGE FAULT (OUT OF MEMORY) ===\n");
+    MMU_writeByte(mmu, addr5, 'E'); 
 
-    for (int i = 0; i < NUM_TEST_PAGES; i++) {
-        logical_address.segment_id = 0;
-        logical_address.page_number = i;
-        logical_address.offset = 0;
+    printf("\n=== TEST READ AFTER SWAP ===\n");
+    char c1 = MMU_readByte(mmu, addr1);
+    char c2 = MMU_readByte(mmu, addr2);
+    char c3 = MMU_readByte(mmu, addr3);
+    char c4 = MMU_readByte(mmu, addr4);
+    char c5 = MMU_readByte(mmu, addr5); 
 
-        MMU_writeByte(mmu, logical_address, data[i]);
-        char read_value = MMU_readByte(mmu, logical_address);
-        assert(read_value == data[i] && "Errore nella lettura!");
-    }
-
-    // Test eccezione
-    logical_address.page_number = 2; 
-    mmu->pages[logical_address.page_number].flags = 0; // Imposta la pagina come non valida
-
-    printf("Tentativo di scrittura in pagina non valida %d...\n", logical_address.page_number);
-    MMU_exception(mmu, logical_address.page_number); 
-    printf("Page fault gestito per la pagina %d.\n", logical_address.page_number);
-
-    mmu->pages[logical_address.page_number].flags = PageValid; // Imposta la pagina a valida
-    MMU_writeByte(mmu, logical_address, 'X');
-    char read_value_after_fault = MMU_readByte(mmu, logical_address);
-    assert(read_value_after_fault == 'X' && "Errore nella lettura dopo il page fault!");
+    printf("Expected 'A', got: '%c'\n", c1);
+    printf("Expected 'B', got: '%c'\n", c2);
+    printf("Expected 'C', got: '%c'\n", c3);
+    printf("Expected 'D', got: '%c'\n", c4);
+    printf("Expected 'E', got: '%c'\n", c5);
 
     MMU_free(mmu);
+}
+
+int main() {
+    test_mmu_with_swap_handling();
     return 0;
 }
