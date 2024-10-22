@@ -90,6 +90,32 @@ void MMU_exception(MMU* mmu, uint32_t page_number) {
     mmu->pages[page_number].flags |= PageValid; 
 }
 
+void print_MMU_state(MMU* mmu) {
+    printf("\n=== MMU State ===\n");
+
+    printf("\nSegments:\n");
+    printf("%-10s %-10s %-10s %-10s\n", "SegmentID", "Base", "Limit", "Flags");
+    for (int i = 0; i < mmu->num_segments; i++) {
+        SegmentDescriptor* seg = &mmu->segments[i];
+        printf("%-10d %-10u %-10u %-10x\n", i, seg->base, seg->limit, seg->flags);
+    }
+
+    printf("\nPage Table:\n");
+    printf("%-10s %-10s %-10s\n", "Page#", "Frame#", "Flags");
+    for (int i = 0; i < mmu->num_pages; i++) {
+        PageEntry* page = &mmu->pages[i];
+        printf("%-10d %-10u %-10x\n", i, page->frame_number, page->flags);
+    }
+
+    printf("\nFrame Usage:\n");
+    for (int i = 0; i < NUM_FRAMES; i++) {
+        printf("Frame %d: %s\n", i, mmu->frame_usage[i] ? "Occupied" : "Free");
+    }
+
+    printf("\nSwap File Status: Page faults handled: %d\n", mmu->page_fault_count);
+
+    printf("================\n");
+}
 
 int find_free_frame_or_replace(MMU* mmu) {
     static int next_frame = 0;
