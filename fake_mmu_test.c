@@ -100,6 +100,41 @@ void test_swap_file_usage() {
     printf("Test Swap File Usage passed.\n");
 }
 
+void test_multiple_segments() {
+    printf("Running test: Multiple Segments Usage...\n");
+    MMU* mmu = MMU_init("swap_file.bin");
+    assert(mmu->swap_file != NULL && "Swap file should be opened correctly");
+
+    int pages_to_write = 400;
+    char base_char = 'A';  
+    for (int i = 0; i < pages_to_write; i++) {
+        int segment_id = i / (NUM_PAGES / NUM_SEGMENTS);  // Determina il segmento
+        int page_number = i % (NUM_PAGES / NUM_SEGMENTS); // Determina la pagina nel segmento
+        LogicalAddress la = {segment_id, page_number, 0}; 
+        MMU_writeByte(mmu, la, base_char + (i % 26));  
+        printf("Writing to Segment %d, Page %d, Char: %c\n", segment_id, page_number, base_char + (i % 26));
+    }
+
+    MMU_exportToCSV(mmu, "schema.csv");
+    
+    // Verifica che i dati siano scritti correttamente
+    for (int i = 0; i < pages_to_write; i++) {
+        int segment_id = i / (NUM_PAGES / NUM_SEGMENTS);  // Determina il segmento
+        int page_number = i % (NUM_PAGES / NUM_SEGMENTS); // Determina la pagina nel segmento
+        LogicalAddress la = {segment_id, page_number, 0}; 
+        char read_data = MMU_readByte(mmu, la);
+        char expected_data = base_char + (i % 26);  
+        
+        // Debug print per vedere cosa viene letto
+        printf("Expected: %c, Read: %c from Segment %d, Page %d\n", expected_data, read_data, segment_id, page_number);
+        
+        assert(read_data == expected_data && "Page should contain the correct data");
+    }
+
+    MMU_free(mmu);
+    printf("Test Multiple Segments Usage passed and memory exported to multiple_segments_test.csv\n");
+}
+
 void interactive_menu() {
     int choice;
 
@@ -111,8 +146,9 @@ void interactive_menu() {
         printf("4. Test Second Chance Algorithm\n");
         printf("5. Test Access Out Of Segment\n");
         printf("6. Test Swap File Usage\n");
-        printf("7. Exit\n");
-        printf("Select a test to run (1-7): ");
+        printf("7. Test Multiple Segments\n");
+        printf("8. Exit\n");
+        printf("Select a test to run (1-8): ");
         scanf("%d", &choice);
 
         switch (choice) {
@@ -135,12 +171,15 @@ void interactive_menu() {
                 test_swap_file_usage();
                 break;
             case 7:
+                test_multiple_segments();
+                break;
+            case 8:
                 printf("Exiting...\n");
                 break;
             default:
                 printf("Invalid choice. Please select a number between 1 and 7.\n");
         }
-    } while (choice != 7);
+    } while (choice != 8);
 }
 
 int main() {

@@ -153,33 +153,38 @@ char MMU_readByte(MMU* mmu, LogicalAddress logical_address) {
 void MMU_exportToCSV(MMU* mmu, const char* filename) {
     FILE* file = fopen(filename, "w");
     if (file == NULL) {
-        perror("Errore nell'aprire il file CSV");
+        printf("Error opening CSV file\n");
         return;
     }
+    
+    fprintf(file, "Segment ID, Base Page, Page Number, Frame Number, Page Valid, Flags, Segment Limit, Segment Flags, Physical Address\n");
+    
+    for (int segment_id = 0; segment_id < NUM_SEGMENTS; segment_id++) {
+        SegmentDescriptor segment = mmu->segments[segment_id];
 
-    fprintf(file, "Indirizzo Virtuale, Pagina Virtuale, Frame Fisico, Flag Pagina, Indirizzo Fisico, Page Fault\n");
+        for (int page_offset = 0; page_offset < segment.limit; page_offset++) {
+            int page_number = segment.base + page_offset;
 
-    for (int i = 0; i < NUM_PAGES; i++) {
-        PageEntry* page = &mmu->pages[i];
-        int page_fault = (page->flags & PageValid) ? 0 : 1;
-        char physical_address_str[32];
-        if (page->flags & PageValid) {
-            int frame_number = page->frame_number;
-            int physical_address = frame_number * PAGE_SIZE;
-            snprintf(physical_address_str, sizeof(physical_address_str), "0x%X", physical_address);
-        } else {
-            snprintf(physical_address_str, sizeof(physical_address_str), "N/A");
+            if (page_number < NUM_PAGES) {
+                PageEntry page = mmu->pages[page_number];
+                int is_valid = (page.flags & PageValid) ? 1 : 0;
+
+                uint32_t physical_address = (page.frame_number << FRAME_NBITS) | 0;
+
+                fprintf(file, "%d, %d, %d, %d, %d, 0x%x, %d, 0x%x, %u\n",
+                    segment_id,
+                    segment.base,
+                    page_number,
+                    page.frame_number,
+                    is_valid,
+                    page.flags,
+                    segment.limit,
+                    segment.flags,
+                    physical_address
+                );
+            }
         }
-        fprintf(file, "0x%X, Pagina %d, Frame %d, 0x%X, %s, %d\n",
-                i * PAGE_SIZE,         
-                i,                     
-                page->frame_number,    
-                page->flags,           
-                physical_address_str,  
-                page_fault             
-        );
     }
 
     fclose(file);
-    printf("Stato della MMU esportato in %s\n", filename);
 }
