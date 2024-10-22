@@ -12,34 +12,30 @@ void test_MMU_initialization() {
     for (int i = 0; i < mmu->num_pages; i++) {
         assert(!(mmu->pages[i].flags & PageValid) && "Page should be initially invalid");
     }
+    MMU_exportToCSV(mmu, "schema.csv");
     MMU_free(mmu);
     printf("Test MMU_initialization passed.\n");
 }
 
 void test_page_fault_handling_with_swap() {
     printf("Running test: Page Fault Handling with Swap File...\n");
-    
-    // Inizializza la MMU e verifica che il file di swap venga aperto correttamente
     MMU* mmu = MMU_init("swap_file_test.bin");
     assert(mmu->swap_file != NULL && "Swap file should be opened correctly");
     
-    // Genera un page fault e verifica che il page fault incrementi il contatore
     int initial_page_faults = mmu->page_fault_count;
     LogicalAddress la = {0, 0, 0}; 
-    char data = MMU_readByte(mmu, la); // Questo dovrebbe causare un page fault
+    char data = MMU_readByte(mmu, la); 
     printf("Read data after page fault: %c\n", data);
     assert(mmu->pages[0].flags & PageValid && "Page should be valid after page fault");
     assert(mmu->page_fault_count == initial_page_faults + 1 && "Page fault count should increase");
 
-    // Verifica che il file di swap venga letto correttamente
     fseek(mmu->swap_file, 0, SEEK_END); 
     long swap_file_size = ftell(mmu->swap_file);
     assert(swap_file_size == VIRTUAL_MEMORY_SIZE && "Swap file size should match virtual memory size");
-
+    MMU_exportToCSV(mmu, "schema.csv");
     MMU_free(mmu);
     printf("Test Page Fault Handling with Swap File passed.\n");
 }
-
 
 void test_write_and_read() {
     printf("Running test: Write and Read...\n");
@@ -48,15 +44,12 @@ void test_write_and_read() {
     LogicalAddress la = {0, 1, 100};
     MMU_writeByte(mmu, la, 'A');
     
-    print_MMU_state(mmu);
-    
     char c = MMU_readByte(mmu, la);
     assert(c == 'A' && "The byte read should match the written byte");
-    
+    MMU_exportToCSV(mmu, "schema.csv");
     MMU_free(mmu);
     printf("Test Write and Read passed.\n");
 }
-
 
 void test_second_chance_algorithm() {
     printf("Running test: Second Chance Algorithm...\n");
@@ -68,6 +61,7 @@ void test_second_chance_algorithm() {
     LogicalAddress la = {1, 0, 0};
     MMU_writeByte(mmu, la, 'B' + 256);
     assert(!(mmu->pages[0].flags & PageValid) && "Page 0 should have been replaced.");
+    MMU_exportToCSV(mmu, "schema.csv");
     MMU_free(mmu);
     printf("Test Second Chance Algorithm passed.\n");
 }
@@ -78,21 +72,20 @@ void test_access_out_of_segment() {
     LogicalAddress la = {0, 257, 0};
     printf("Segment ID: %d, Page Number: %d, Segment Limit: %d\n", la.segment_id, la.page_number, mmu->segments[la.segment_id].limit);
     assert(!(la.page_number < mmu->segments[la.segment_id].limit) && "Access should fail due to out of bounds");
+    MMU_exportToCSV(mmu, "schema.csv");
     MMU_free(mmu);
     printf("Test Access Out Of Segment passed.\n");
 }
 
 void test_swap_file_usage() {
     printf("Running test: Swap File Usage...\n");
-
-    MMU* mmu = MMU_init("swap_file_test.bin");
+    MMU* mmu = MMU_init("swap_file.bin");
     assert(mmu->swap_file != NULL && "Swap file should be opened correctly");
     
     for (int i = 0; i < NUM_FRAMES; i++) {
         LogicalAddress la = {0, i, 0}; 
         MMU_writeByte(mmu, la, 'A' + i); 
         printf("Segment ID: %d, Page Number: %d, Segment Limit: %d\n", la.segment_id, la.page_number, mmu->segments[la.segment_id].limit);
-
     }
 
     LogicalAddress la = {0, 0, 0};
@@ -102,13 +95,55 @@ void test_swap_file_usage() {
     fseek(mmu->swap_file, 0, SEEK_END);
     long swap_file_size = ftell(mmu->swap_file);
     assert(swap_file_size == VIRTUAL_MEMORY_SIZE && "Swap file size should match virtual memory size");
+    MMU_exportToCSV(mmu, "schema.csv");
     MMU_free(mmu);
     printf("Test Swap File Usage passed.\n");
 }
 
-int main() {
-    test_write_and_read();
+void interactive_menu() {
+    int choice;
 
-    printf("All tests passed!\n");
+    do {
+        printf("=== MMU Test Menu ===\n");
+        printf("1. Test MMU Initialization\n");
+        printf("2. Test Page Fault Handling\n");
+        printf("3. Test Write and Read\n");
+        printf("4. Test Second Chance Algorithm\n");
+        printf("5. Test Access Out Of Segment\n");
+        printf("6. Test Swap File Usage\n");
+        printf("7. Exit\n");
+        printf("Select a test to run (1-7): ");
+        scanf("%d", &choice);
+
+        switch (choice) {
+            case 1:
+                test_MMU_initialization();
+                break;
+            case 2:
+                test_page_fault_handling_with_swap();
+                break;
+            case 3:
+                test_write_and_read();
+                break;
+            case 4:
+                test_second_chance_algorithm();
+                break;
+            case 5:
+                test_access_out_of_segment();
+                break;
+            case 6:
+                test_swap_file_usage();
+                break;
+            case 7:
+                printf("Exiting...\n");
+                break;
+            default:
+                printf("Invalid choice. Please select a number between 1 and 7.\n");
+        }
+    } while (choice != 7);
+}
+
+int main() {
+    interactive_menu();
     return 0;
 }

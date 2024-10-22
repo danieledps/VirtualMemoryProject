@@ -44,7 +44,6 @@ typedef struct MMU {
     char physical_memory[PHYSICAL_MEMORY_SIZE];
     FILE* swap_file;
     int page_fault_count;
-    int* frame_usage;
     int num_pages;
     int num_segments;
 } MMU;

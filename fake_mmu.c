@@ -12,9 +12,6 @@ MMU* MMU_init(const char* swap_filename) {
     
     mmu->segments = (SegmentDescriptor*)malloc(NUM_SEGMENTS * sizeof(SegmentDescriptor));
     assert(mmu->segments != NULL && "Memory allocation for segments failed");
-    
-    mmu->frame_usage = (int*)calloc(NUM_FRAMES, sizeof(int));
-    assert(mmu->frame_usage != NULL && "Memory allocation for frame usage failed");
 
     for (int i = 0; i < NUM_PAGES; i++) {
         mmu->pages[i].frame_number = 0;  
@@ -50,7 +47,6 @@ void MMU_free(MMU* mmu) {
     fclose(mmu->swap_file);
     free(mmu->pages);
     free(mmu->segments);
-    free(mmu->frame_usage);
     free(mmu);
 }
 
@@ -76,46 +72,30 @@ uint32_t getPhysicalAddress(MMU* mmu, LinearAddress linear_address) {
 void MMU_exception(MMU* mmu, uint32_t page_number) {
     assert(page_number < mmu->num_pages && "page_number out of bounds");
     mmu->page_fault_count++;
-    int frame_number = find_free_frame_or_replace(mmu);
-    if (mmu->pages[frame_number].flags & PageValid) {
-        fseek(mmu->swap_file, mmu->pages[frame_number].frame_number * PAGE_SIZE, SEEK_SET);
-        size_t write_size = fwrite(&mmu->physical_memory[frame_number * PAGE_SIZE], PAGE_SIZE, 1, mmu->swap_file);
+
+    int frame_to_replace = find_free_frame_or_replace(mmu);
+
+    // Se la pagina nel frame da sostituire è valida, salvala nel file di swap
+    if (mmu->pages[frame_to_replace].flags & PageValid) {
+        uint32_t swapped_page_number = mmu->pages[frame_to_replace].frame_number;
+        fseek(mmu->swap_file, swapped_page_number * PAGE_SIZE, SEEK_SET);
+        size_t write_size = fwrite(&mmu->physical_memory[frame_to_replace * PAGE_SIZE], PAGE_SIZE, 1, mmu->swap_file);
         assert(write_size == 1 && "Error writing to swap file during page fault");
-        mmu->pages[frame_number].flags &= ~PageValid;
+
+        // Invalida la pagina appena espulsa
+        mmu->pages[swapped_page_number].flags &= ~PageValid;
     }
+
+    // Carica la nuova pagina dal file di swap
     fseek(mmu->swap_file, page_number * PAGE_SIZE, SEEK_SET);
-    size_t read_size = fread(&mmu->physical_memory[frame_number * PAGE_SIZE], PAGE_SIZE, 1, mmu->swap_file);
+    size_t read_size = fread(&mmu->physical_memory[frame_to_replace * PAGE_SIZE], PAGE_SIZE, 1, mmu->swap_file);
     assert(read_size == 1 && "Error reading from swap file during page fault");
-    mmu->pages[page_number].frame_number = frame_number;
-    mmu->pages[page_number].flags |= PageValid; 
+
+    // Aggiorna la page table con il nuovo frame number e setta il flag di validità
+    mmu->pages[page_number].frame_number = frame_to_replace;
+    mmu->pages[page_number].flags |= PageValid;
 }
 
-void print_MMU_state(MMU* mmu) {
-    printf("\n=== MMU State ===\n");
-
-    printf("\nSegments:\n");
-    printf("%-10s %-10s %-10s %-10s\n", "SegmentID", "Base", "Limit", "Flags");
-    for (int i = 0; i < mmu->num_segments; i++) {
-        SegmentDescriptor* seg = &mmu->segments[i];
-        printf("%-10d %-10u %-10u %-10x\n", i, seg->base, seg->limit, seg->flags);
-    }
-
-    printf("\nPage Table:\n");
-    printf("%-10s %-10s %-10s\n", "Page#", "Frame#", "Flags");
-    for (int i = 0; i < mmu->num_pages; i++) {
-        PageEntry* page = &mmu->pages[i];
-        printf("%-10d %-10u %-10x\n", i, page->frame_number, page->flags);
-    }
-
-    printf("\nFrame Usage:\n");
-    for (int i = 0; i < NUM_FRAMES; i++) {
-        printf("Frame %d: %s\n", i, mmu->frame_usage[i] ? "Occupied" : "Free");
-    }
-
-    printf("\nSwap File Status: Page faults handled: %d\n", mmu->page_fault_count);
-
-    printf("================\n");
-}
 
 int find_free_frame_or_replace(MMU* mmu) {
     static int next_frame = 0;
@@ -168,4 +148,38 @@ char MMU_readByte(MMU* mmu, LogicalAddress logical_address) {
     mmu->pages[linear_address.page_number].flags |= ReadBit;
     printf("Read byte '%c' from page %u, offset %u (physical address: %u)\n", mmu->physical_memory[physical_address], logical_address.page_number, logical_address.offset, physical_address);
     return mmu->physical_memory[physical_address];
+}
+
+void MMU_exportToCSV(MMU* mmu, const char* filename) {
+    FILE* file = fopen(filename, "w");
+    if (file == NULL) {
+        perror("Errore nell'aprire il file CSV");
+        return;
+    }
+
+    fprintf(file, "Indirizzo Virtuale, Pagina Virtuale, Frame Fisico, Flag Pagina, Indirizzo Fisico, Page Fault\n");
+
+    for (int i = 0; i < NUM_PAGES; i++) {
+        PageEntry* page = &mmu->pages[i];
+        int page_fault = (page->flags & PageValid) ? 0 : 1;
+        char physical_address_str[32];
+        if (page->flags & PageValid) {
+            int frame_number = page->frame_number;
+            int physical_address = frame_number * PAGE_SIZE;
+            snprintf(physical_address_str, sizeof(physical_address_str), "0x%X", physical_address);
+        } else {
+            snprintf(physical_address_str, sizeof(physical_address_str), "N/A");
+        }
+        fprintf(file, "0x%X, Pagina %d, Frame %d, 0x%X, %s, %d\n",
+                i * PAGE_SIZE,         
+                i,                     
+                page->frame_number,    
+                page->flags,           
+                physical_address_str,  
+                page_fault             
+        );
+    }
+
+    fclose(file);
+    printf("Stato della MMU esportato in %s\n", filename);
 }
