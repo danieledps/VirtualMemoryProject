@@ -75,25 +75,21 @@ void MMU_exception(MMU* mmu, uint32_t page_number) {
 
     int frame_to_replace = find_free_frame_or_replace(mmu);
 
-    // Se la pagina nel frame da sostituire è valida, salvala nel file di swap
     if (mmu->pages[frame_to_replace].flags & PageValid) {
         uint32_t swapped_page_number = mmu->pages[frame_to_replace].frame_number;
         fseek(mmu->swap_file, swapped_page_number * PAGE_SIZE, SEEK_SET);
         size_t write_size = fwrite(&mmu->physical_memory[frame_to_replace * PAGE_SIZE], PAGE_SIZE, 1, mmu->swap_file);
         assert(write_size == 1 && "Error writing to swap file during page fault");
-
-        // Invalida la pagina appena espulsa
         mmu->pages[swapped_page_number].flags &= ~PageValid;
+        assert(!(mmu->pages[swapped_page_number].flags & PageValid) && "PageValid flag should be cleared for swapped-out page");
     }
 
-    // Carica la nuova pagina dal file di swap
     fseek(mmu->swap_file, page_number * PAGE_SIZE, SEEK_SET);
     size_t read_size = fread(&mmu->physical_memory[frame_to_replace * PAGE_SIZE], PAGE_SIZE, 1, mmu->swap_file);
     assert(read_size == 1 && "Error reading from swap file during page fault");
-
-    // Aggiorna la page table con il nuovo frame number e setta il flag di validità
     mmu->pages[page_number].frame_number = frame_to_replace;
     mmu->pages[page_number].flags |= PageValid;
+    assert(mmu->pages[page_number].flags & PageValid && "PageValid flag should be set for loaded page");
 }
 
 
@@ -168,7 +164,6 @@ void MMU_exportToCSV(MMU* mmu, const char* filename) {
             if (page_number < NUM_PAGES) {
                 PageEntry page = mmu->pages[page_number];
                 int is_valid = (page.flags & PageValid) ? 1 : 0;
-
                 uint32_t physical_address = (page.frame_number << FRAME_NBITS) | 0;
 
                 fprintf(file, "%d, %d, %d, %d, %d, 0x%x, %d, 0x%x, %u\n",
