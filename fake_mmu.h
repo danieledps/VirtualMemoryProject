@@ -69,3 +69,4 @@ uint32_t getPhysicalAddress(MMU* mmu, LinearAddress linear_address);
 void MMU_writeByte(MMU* mmu, LogicalAddress logical_address, char c);
 char MMU_readByte(MMU* mmu, LogicalAddress logical_address);
 int find_free_frame_or_replace(MMU* mmu);
+void MMU_exportToCSV(MMU* mmu, const char* filename);

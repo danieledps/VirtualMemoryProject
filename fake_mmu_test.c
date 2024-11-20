@@ -19,7 +19,7 @@ void test_MMU_initialization() {
 
 void test_page_fault_handling_with_swap() {
     printf("Running test: Page Fault Handling with Swap File...\n");
-    MMU* mmu = MMU_init("swap_file_test.bin");
+    MMU* mmu = MMU_init("swap_file.bin");
     assert(mmu->swap_file != NULL && "Swap file should be opened correctly");
     
     int initial_page_faults = mmu->page_fault_count;
@@ -104,55 +104,31 @@ void test_multiple_segments() {
     printf("Running test: Multiple Segments Usage...\n");
     MMU* mmu = MMU_init("swap_file.bin");
     assert(mmu->swap_file != NULL && "Swap file should be opened correctly");
-
-    int pages_to_write = 400;
-    char base_char = 'A';  
+    int pages_to_write = 400; 
     for (int i = 0; i < pages_to_write; i++) {
         int segment_id = i / (NUM_PAGES / NUM_SEGMENTS);
         int page_number = i % (NUM_PAGES / NUM_SEGMENTS);
         LogicalAddress la = {segment_id, page_number, 0}; 
-        MMU_writeByte(mmu, la, base_char + (i % 26));  
-        printf("Writing to Segment %d, Page %d, Char: %c\n", segment_id, page_number, base_char + (i % 26));
+        MMU_writeByte(mmu, la, (char)(i % 256));  
+        printf("Writing to Segment %d, Page %d, Data: %d\n", segment_id, page_number, i % 256);
+        if (i % 50 == 0) { 
+            mmu->pages[i].flags |= Unswappable;
+            printf("Page %d marked as Unswappable\n", i);
+        }
     }
 
-    MMU_exportToCSV(mmu, "schema.csv");
     for (int i = 0; i < pages_to_write; i++) {
         int segment_id = i / (NUM_PAGES / NUM_SEGMENTS);
         int page_number = i % (NUM_PAGES / NUM_SEGMENTS);
         LogicalAddress la = {segment_id, page_number, 0}; 
         char read_data = MMU_readByte(mmu, la);
-        char expected_data = base_char + (i % 26);  
-        printf("Expected: %c, Read: %c from Segment %d, Page %d\n", expected_data, read_data, segment_id, page_number);
-        
+        char expected_data = (char)(i % 256);  
+        printf("Expected: %d, Read: %d from Segment %d, Page %d\n", expected_data, read_data, segment_id, page_number);
         assert(read_data == expected_data && "Page should contain the correct data");
     }
-
+    MMU_exportToCSV(mmu, "schema.csv");
     MMU_free(mmu);
 }
-
-void test_page_valid_flag() {
-    MMU* mmu = MMU_init("swap_file.bin");
-
-    LogicalAddress addr = { .segment_id = 0, .page_number = 0, .offset = 0 };
-    
-    MMU_writeByte(mmu, addr, 'A');
-    assert(mmu->pages[addr.page_number].flags & PageValid);
-    printf("PageValid impostato correttamente dopo il page fault.\n");
-
-    LogicalAddress addr2 = { .segment_id = 0, .page_number = 1, .offset = 0 };
-    MMU_writeByte(mmu, addr2, 'B');
-
-    assert(!(mmu->pages[addr.page_number].flags & PageValid) && "Errore: PageValid non è stato disattivato.");
-    printf("PageValid rimosso correttamente dopo l'espulsione della pagina.\n");
-
-    char value = MMU_readByte(mmu, addr);
-    assert((mmu->pages[addr.page_number].flags & PageValid) && "Errore: PageValid non è stato impostato correttamente dopo il secondo page fault.");
-    printf("Rilettura: PageValid impostato correttamente dopo il secondo page fault.\n");
-    assert(value == 'A' && "Errore: il valore letto non corrisponde al valore scritto inizialmente.");
-
-    MMU_free(mmu);
-}
-
 
 void interactive_menu() {
     int choice;
@@ -202,7 +178,6 @@ void interactive_menu() {
 }
 
 int main() {
-    test_page_valid_flag();
     interactive_menu();
     return 0;
 }

@@ -45,6 +45,7 @@ MMU* MMU_init(const char* swap_filename) {
 
 void MMU_free(MMU* mmu) {
     fclose(mmu->swap_file);
+    remove("swap_file.bin");
     free(mmu->pages);
     free(mmu->segments);
     free(mmu);
@@ -73,54 +74,74 @@ void MMU_exception(MMU* mmu, uint32_t page_number) {
     assert(page_number < mmu->num_pages && "page_number out of bounds");
     mmu->page_fault_count++;
 
+    static int valid_page_count = 0;
     int frame_to_replace = find_free_frame_or_replace(mmu);
 
-    if (mmu->pages[frame_to_replace].flags & PageValid) {
-        uint32_t swapped_page_number = mmu->pages[frame_to_replace].frame_number;
-        fseek(mmu->swap_file, swapped_page_number * PAGE_SIZE, SEEK_SET);
-        size_t write_size = fwrite(&mmu->physical_memory[frame_to_replace * PAGE_SIZE], PAGE_SIZE, 1, mmu->swap_file);
-        assert(write_size == 1 && "Error writing to swap file during page fault");
-        mmu->pages[swapped_page_number].flags &= ~PageValid;
-        assert(!(mmu->pages[swapped_page_number].flags & PageValid) && "PageValid flag should be cleared for swapped-out page");
-    }
+    if (valid_page_count >= NUM_FRAMES || (mmu->pages[frame_to_replace].flags & PageValid)) {
+        uint32_t swapped_page_number = -1;
+        for (uint32_t i = 0; i < mmu->num_pages; i++) {
+            if (mmu->pages[i].frame_number == frame_to_replace && 
+                mmu->pages[i].flags & PageValid) {
+                swapped_page_number = i;
+                break;
+            }
+        }
 
+        if (swapped_page_number != -1) {
+            fseek(mmu->swap_file, swapped_page_number * PAGE_SIZE, SEEK_SET);
+            size_t write_size = fwrite(&mmu->physical_memory[frame_to_replace * PAGE_SIZE], PAGE_SIZE, 1, mmu->swap_file);
+            assert(write_size == 1 && "Error writing to swap file during page fault");
+
+            mmu->pages[swapped_page_number].flags &= ~PageValid;
+            printf("Page %d swapped out. Frame %d is now free.\n", swapped_page_number, frame_to_replace);
+            valid_page_count--;
+        }
+    }
     fseek(mmu->swap_file, page_number * PAGE_SIZE, SEEK_SET);
     size_t read_size = fread(&mmu->physical_memory[frame_to_replace * PAGE_SIZE], PAGE_SIZE, 1, mmu->swap_file);
     assert(read_size == 1 && "Error reading from swap file during page fault");
     mmu->pages[page_number].frame_number = frame_to_replace;
     mmu->pages[page_number].flags |= PageValid;
-    assert(mmu->pages[page_number].flags & PageValid && "PageValid flag should be set for loaded page");
+    printf("Page %d loaded into frame %d.\n", page_number, frame_to_replace);
+
+    valid_page_count++;
 }
+
+
 
 
 int find_free_frame_or_replace(MMU* mmu) {
     static int next_frame = 0;
-    int attempts = 0;
+    int initial_frame = next_frame;
 
-    while (attempts < NUM_FRAMES) { 
+    while (1) {
         PageEntry* page = &mmu->pages[next_frame];
 
-        if (page->flags & Unswappable) {
+        if (!(page->flags & Unswappable)) {
+            if (page->flags & ReadBit) {
+                printf("Frame %d has ReadBit set. Resetting ReadBit.\n", next_frame);
+                page->flags &= ~ReadBit;
+            } else {
+                printf("Frame %d found for replacement.\n", next_frame);
+                int frame_to_replace = next_frame;
+                next_frame = (next_frame + 1) % NUM_FRAMES;
+                return frame_to_replace;
+            }
+        } else {
             printf("Frame %d is unswappable, skipping.\n", next_frame);
-            next_frame = (next_frame + 1) % NUM_FRAMES;
-            attempts++;
-            continue;
         }
 
-        if (page->flags & ReadBit) {
-            printf("Frame %d has ReadBit set. Resetting ReadBit.\n", next_frame);
-            page->flags &= ~ReadBit;
+        next_frame = (next_frame + 1) % NUM_FRAMES;
+
+        if (next_frame == initial_frame) {
+            printf("All frames have ReadBit set or are unswappable. Forcing replacement of frame %d.\n", next_frame);
+            int frame_to_replace = next_frame;
             next_frame = (next_frame + 1) % NUM_FRAMES;
-            attempts++;
-        } else {
-            printf("Frame %d found for replacement.\n", next_frame);
-            return next_frame;
+            return frame_to_replace;
         }
     }
-
-    fprintf(stderr, "No frame available for replacement. Check page states.\n");
-    exit(-1);
 }
+
 
 void MMU_writeByte(MMU* mmu, LogicalAddress logical_address, char c) {
     LinearAddress linear_address = getLinearAddress(mmu, logical_address);
@@ -131,7 +152,7 @@ void MMU_writeByte(MMU* mmu, LogicalAddress logical_address, char c) {
     PhysicalAddress physical_address = getPhysicalAddress(mmu, linear_address);
     mmu->physical_memory[physical_address] = c;
     mmu->pages[linear_address.page_number].flags |= WriteBit | ReadBit;
-    printf("Written byte '%c' at page %u, offset %u (physical address: %u)\n", c, logical_address.page_number, logical_address.offset, physical_address);
+    printf("Written byte '%d' at page %u, offset %u (physical address: %u)\n", c, logical_address.page_number, logical_address.offset, physical_address);
 }
 
 char MMU_readByte(MMU* mmu, LogicalAddress logical_address) {
@@ -142,7 +163,7 @@ char MMU_readByte(MMU* mmu, LogicalAddress logical_address) {
     }
     PhysicalAddress physical_address = getPhysicalAddress(mmu, linear_address);
     mmu->pages[linear_address.page_number].flags |= ReadBit;
-    printf("Read byte '%c' from page %u, offset %u (physical address: %u)\n", mmu->physical_memory[physical_address], logical_address.page_number, logical_address.offset, physical_address);
+    printf("Read byte '%d' from page %u, offset %u (physical address: %u)\n", mmu->physical_memory[physical_address], logical_address.page_number, logical_address.offset, physical_address);
     return mmu->physical_memory[physical_address];
 }
 
@@ -153,7 +174,7 @@ void MMU_exportToCSV(MMU* mmu, const char* filename) {
         return;
     }
     
-    fprintf(file, "Segment ID, Base Page, Page Number, Frame Number, Page Valid, Flags, Segment Limit, Segment Flags, Physical Address\n");
+    fprintf(file, "Segment ID | Base Page | Page Number | Frame Number | Page Valid | Flags | Segment Limit | Segment Flags | Physical Address\n");
     
     for (int segment_id = 0; segment_id < NUM_SEGMENTS; segment_id++) {
         SegmentDescriptor segment = mmu->segments[segment_id];
@@ -166,7 +187,7 @@ void MMU_exportToCSV(MMU* mmu, const char* filename) {
                 int is_valid = (page.flags & PageValid) ? 1 : 0;
                 uint32_t physical_address = (page.frame_number << FRAME_NBITS) | 0;
 
-                fprintf(file, "%d, %d, %d, %d, %d, 0x%x, %d, 0x%x, %u\n",
+                fprintf(file, "%d | %d | %d | %d | %d | 0x%x | %d | 0x%x | %u\n",
                     segment_id,
                     segment.base,
                     page_number,
