@@ -173,8 +173,10 @@ void MMU_exportToCSV(MMU* mmu, const char* filename) {
         printf("Error opening CSV file\n");
         return;
     }
-    
+
     fprintf(file, "Segment ID | Base Page | Page Number | Frame Number | Page Valid | Flags | Segment Limit | Segment Flags | Physical Address\n");
+
+    int total_valid_pages = 0;
     
     for (int segment_id = 0; segment_id < NUM_SEGMENTS; segment_id++) {
         SegmentDescriptor segment = mmu->segments[segment_id];
@@ -185,6 +187,9 @@ void MMU_exportToCSV(MMU* mmu, const char* filename) {
             if (page_number < NUM_PAGES) {
                 PageEntry page = mmu->pages[page_number];
                 int is_valid = (page.flags & PageValid) ? 1 : 0;
+                if (is_valid) {
+                    total_valid_pages++;
+                }
                 uint32_t physical_address = (page.frame_number << FRAME_NBITS) | 0;
 
                 fprintf(file, "%d | %d | %d | %d | %d | 0x%x | %d | 0x%x | %u\n",
@@ -201,6 +206,8 @@ void MMU_exportToCSV(MMU* mmu, const char* filename) {
             }
         }
     }
+    fprintf(file, "\nTotal Valid Pages: %d\n", total_valid_pages);
 
     fclose(file);
 }
+

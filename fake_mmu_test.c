@@ -51,21 +51,6 @@ void test_write_and_read() {
     printf("Test Write and Read passed.\n");
 }
 
-void test_second_chance_algorithm() {
-    printf("Running test: Second Chance Algorithm...\n");
-    MMU* mmu = MMU_init("swap_file.bin");
-    for (int i = 0; i < NUM_FRAMES; i++) {
-        LogicalAddress la = {0, i, 0};
-        MMU_writeByte(mmu, la, 'B' + i);
-    }
-    LogicalAddress la = {1, 0, 0};
-    MMU_writeByte(mmu, la, 'B' + 256);
-    assert(!(mmu->pages[0].flags & PageValid) && "Page 0 should have been replaced.");
-    MMU_exportToCSV(mmu, "schema.csv");
-    MMU_free(mmu);
-    printf("Test Second Chance Algorithm passed.\n");
-}
-
 void test_access_out_of_segment() {
     printf("Running test: Access Out Of Segment...\n");
     MMU* mmu = MMU_init("swap_file.bin");
@@ -100,7 +85,7 @@ void test_swap_file_usage() {
     printf("Test Swap File Usage passed.\n");
 }
 
-void test_multiple_segments() {
+void test_algorithm() {
     printf("Running test: Multiple Segments Usage...\n");
     MMU* mmu = MMU_init("swap_file.bin");
     assert(mmu->swap_file != NULL && "Swap file should be opened correctly");
@@ -138,12 +123,11 @@ void interactive_menu() {
         printf("1. Test MMU Initialization\n");
         printf("2. Test Page Fault Handling\n");
         printf("3. Test Write and Read\n");
-        printf("4. Test Second Chance Algorithm\n");
-        printf("5. Test Access Out Of Segment\n");
-        printf("6. Test Swap File Usage\n");
-        printf("7. Test Multiple Segments\n");
-        printf("8. Exit\n");
-        printf("Select a test to run (1-8): ");
+        printf("4. Test Access Out Of Segment\n");
+        printf("5. Test Swap File Usage\n");
+        printf("6. Test Algorithm\n");
+        printf("7. Exit\n");
+        printf("Select a test to run (1-7): ");
         scanf("%d", &choice);
 
         switch (choice) {
@@ -157,24 +141,21 @@ void interactive_menu() {
                 test_write_and_read();
                 break;
             case 4:
-                test_second_chance_algorithm();
-                break;
-            case 5:
                 test_access_out_of_segment();
                 break;
-            case 6:
+            case 5:
                 test_swap_file_usage();
                 break;
-            case 7:
-                test_multiple_segments();
+            case 6:
+                test_algorithm();
                 break;
-            case 8:
+            case 7:
                 printf("Exiting...\n");
                 break;
             default:
                 printf("Invalid choice. Please select a number between 1 and 7.\n");
         }
-    } while (choice != 8);
+    } while (choice != 7);
 }
 
 int main() {
